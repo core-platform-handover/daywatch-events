@@ -11,6 +11,10 @@ use Illuminate\Console\Scheduling\Event;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Queue\Job;
 use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Database\Events\TransactionBeginning;
+use Illuminate\Database\Events\TransactionCommitted;
+use Illuminate\Database\Events\TransactionCommitting;
+use Illuminate\Database\Events\TransactionRolledBack;
 use Illuminate\Http\Request;
 use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Mail\Events\MessageSent;
@@ -327,6 +331,20 @@ trait CapturesState
         foreach ($this->redactQueryCallbacks as $callback) {
             $this->ignore(static fn () => ($callback)($record));
         }
+
+        $this->ingest->write($resolver());
+    }
+
+    /**
+     * @internal
+     */
+    public function transaction(TransactionBeginning|TransactionCommitting|TransactionCommitted|TransactionRolledBack $event): void
+    {
+        if ($this->config['filtering']['ignore_transactions'] || $this->paused) {
+            return;
+        }
+
+        [, $resolver] = $this->sensor->transaction($event);
 
         $this->ingest->write($resolver());
     }

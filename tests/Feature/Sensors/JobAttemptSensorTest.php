@@ -760,7 +760,7 @@ class JobAttemptSensorTest extends TestCase
             },
             'queue:listen' => function ($write) {
                 if (version_compare(Application::VERSION, '12.40.0', '>=')) {
-                    $this->assertCount(6, $write);
+                    $this->assertCount(10, $write);
                     $this->assertArrayIsIdenticalToArrayOnlyConsideringListOfKeys($expected = [
                         't' => 'cache-event',
                         'trace_id' => '0d3ca349-e222-4982-ac23-2343692de258',
@@ -771,17 +771,17 @@ class JobAttemptSensorTest extends TestCase
                         'key' => 'illuminate:queue:paused:database:default',
                     ], array_shift($write), array_keys($expected));
                 } else {
-                    $this->assertCount(5, $write);
+                    $this->assertCount(9, $write);
                 }
 
                 $this->assertArrayIsIdenticalToArrayOnlyConsideringListOfKeys($expected = [
-                    't' => 'query',
+                    't' => 'transaction',
                     'trace_id' => '0d3ca349-e222-4982-ac23-2343692de258',
                     'execution_source' => 'job',
                     'execution_id' => '02cb9091-8973-427f-8d3f-042f2ec4e862',
                     'execution_preview' => 'Tests\Feature\Sensors\ProcessedJob',
                     'execution_stage' => 'action',
-                    'sql' => 'select * from "jobs" where "queue" = ? and (("reserved_at" is null and "available_at" <= ?) or ("reserved_at" <= ?)) order by "id" asc limit 1',
+                    'type' => 'begin',
                 ], $write[0], array_keys($expected));
                 $this->assertArrayIsIdenticalToArrayOnlyConsideringListOfKeys($expected = [
                     't' => 'query',
@@ -790,7 +790,7 @@ class JobAttemptSensorTest extends TestCase
                     'execution_id' => '02cb9091-8973-427f-8d3f-042f2ec4e862',
                     'execution_preview' => 'Tests\Feature\Sensors\ProcessedJob',
                     'execution_stage' => 'action',
-                    'sql' => 'update "jobs" set "reserved_at" = ?, "attempts" = ? where "id" = ?',
+                    'sql' => 'select * from "jobs" where "queue" = ? and (("reserved_at" is null and "available_at" <= ?) or ("reserved_at" <= ?)) order by "id" asc limit 1',
                 ], $write[1], array_keys($expected));
                 $this->assertArrayIsIdenticalToArrayOnlyConsideringListOfKeys($expected = [
                     't' => 'query',
@@ -799,8 +799,35 @@ class JobAttemptSensorTest extends TestCase
                     'execution_id' => '02cb9091-8973-427f-8d3f-042f2ec4e862',
                     'execution_preview' => 'Tests\Feature\Sensors\ProcessedJob',
                     'execution_stage' => 'action',
-                    'sql' => 'select * from "jobs" where "id" = ? limit 1',
+                    'sql' => 'update "jobs" set "reserved_at" = ?, "attempts" = ? where "id" = ?',
                 ], $write[2], array_keys($expected));
+                $this->assertArrayIsIdenticalToArrayOnlyConsideringListOfKeys($expected = [
+                    't' => 'transaction',
+                    'trace_id' => '0d3ca349-e222-4982-ac23-2343692de258',
+                    'execution_source' => 'job',
+                    'execution_id' => '02cb9091-8973-427f-8d3f-042f2ec4e862',
+                    'execution_preview' => 'Tests\Feature\Sensors\ProcessedJob',
+                    'execution_stage' => 'action',
+                    'type' => 'committed',
+                ], $write[3], array_keys($expected));
+                $this->assertArrayIsIdenticalToArrayOnlyConsideringListOfKeys($expected = [
+                    't' => 'transaction',
+                    'trace_id' => '0d3ca349-e222-4982-ac23-2343692de258',
+                    'execution_source' => 'job',
+                    'execution_id' => '02cb9091-8973-427f-8d3f-042f2ec4e862',
+                    'execution_preview' => 'Tests\Feature\Sensors\ProcessedJob',
+                    'execution_stage' => 'action',
+                    'type' => 'begin',
+                ], $write[4], array_keys($expected));
+                $this->assertArrayIsIdenticalToArrayOnlyConsideringListOfKeys($expected = [
+                    't' => 'query',
+                    'trace_id' => '0d3ca349-e222-4982-ac23-2343692de258',
+                    'execution_source' => 'job',
+                    'execution_id' => '02cb9091-8973-427f-8d3f-042f2ec4e862',
+                    'execution_preview' => 'Tests\Feature\Sensors\ProcessedJob',
+                    'execution_stage' => 'action',
+                    'sql' => 'select * from "jobs" where "id" = ? limit 1',
+                ], $write[5], array_keys($expected));
                 $this->assertArrayIsIdenticalToArrayOnlyConsideringListOfKeys($expected = [
                     't' => 'query',
                     'trace_id' => '0d3ca349-e222-4982-ac23-2343692de258',
@@ -809,18 +836,27 @@ class JobAttemptSensorTest extends TestCase
                     'execution_preview' => 'Tests\Feature\Sensors\ProcessedJob',
                     'execution_stage' => 'action',
                     'sql' => 'delete from "jobs" where "id" = ?',
-                ], $write[3], array_keys($expected));
+                ], $write[6], array_keys($expected));
+                $this->assertArrayIsIdenticalToArrayOnlyConsideringListOfKeys($expected = [
+                    't' => 'transaction',
+                    'trace_id' => '0d3ca349-e222-4982-ac23-2343692de258',
+                    'execution_source' => 'job',
+                    'execution_id' => '02cb9091-8973-427f-8d3f-042f2ec4e862',
+                    'execution_preview' => 'Tests\Feature\Sensors\ProcessedJob',
+                    'execution_stage' => 'action',
+                    'type' => 'committed',
+                ], $write[7], array_keys($expected));
                 $this->assertArrayIsIdenticalToArrayOnlyConsideringListOfKeys($expected = [
                     't' => 'job-attempt',
                     'trace_id' => '0d3ca349-e222-4982-ac23-2343692de258',
                     'name' => 'Tests\Feature\Sensors\ProcessedJob',
-                ], $write[4], array_keys($expected));
+                ], $write[8], array_keys($expected));
 
                 return true;
             },
             default => function ($write) {
                 if (version_compare(Application::VERSION, '12.40.0', '>=')) {
-                    $this->assertCount(7, $write);
+                    $this->assertCount(11, $write);
                     $this->assertArrayIsIdenticalToArrayOnlyConsideringListOfKeys($expected = [
                         't' => 'cache-event',
                         'trace_id' => '0d3ca349-e222-4982-ac23-2343692de258',
@@ -831,16 +867,16 @@ class JobAttemptSensorTest extends TestCase
                         'key' => 'illuminate:queue:paused:database:default',
                     ], array_shift($write), array_keys($expected));
                 } else {
-                    $this->assertCount(6, $write);
+                    $this->assertCount(10, $write);
                 }
                 $this->assertArrayIsIdenticalToArrayOnlyConsideringListOfKeys($expected = [
-                    't' => 'query',
+                    't' => 'transaction',
                     'trace_id' => '0d3ca349-e222-4982-ac23-2343692de258',
                     'execution_source' => 'job',
                     'execution_id' => '02cb9091-8973-427f-8d3f-042f2ec4e862',
                     'execution_preview' => 'Tests\Feature\Sensors\ProcessedJob',
                     'execution_stage' => 'action',
-                    'sql' => 'select * from "jobs" where "queue" = ? and (("reserved_at" is null and "available_at" <= ?) or ("reserved_at" <= ?)) order by "id" asc limit 1',
+                    'type' => 'begin',
                 ], $write[0], array_keys($expected));
                 $this->assertArrayIsIdenticalToArrayOnlyConsideringListOfKeys($expected = [
                     't' => 'query',
@@ -849,7 +885,7 @@ class JobAttemptSensorTest extends TestCase
                     'execution_id' => '02cb9091-8973-427f-8d3f-042f2ec4e862',
                     'execution_preview' => 'Tests\Feature\Sensors\ProcessedJob',
                     'execution_stage' => 'action',
-                    'sql' => 'update "jobs" set "reserved_at" = ?, "attempts" = ? where "id" = ?',
+                    'sql' => 'select * from "jobs" where "queue" = ? and (("reserved_at" is null and "available_at" <= ?) or ("reserved_at" <= ?)) order by "id" asc limit 1',
                 ], $write[1], array_keys($expected));
                 $this->assertArrayIsIdenticalToArrayOnlyConsideringListOfKeys($expected = [
                     't' => 'query',
@@ -858,8 +894,35 @@ class JobAttemptSensorTest extends TestCase
                     'execution_id' => '02cb9091-8973-427f-8d3f-042f2ec4e862',
                     'execution_preview' => 'Tests\Feature\Sensors\ProcessedJob',
                     'execution_stage' => 'action',
-                    'sql' => 'select * from "jobs" where "id" = ? limit 1',
+                    'sql' => 'update "jobs" set "reserved_at" = ?, "attempts" = ? where "id" = ?',
                 ], $write[2], array_keys($expected));
+                $this->assertArrayIsIdenticalToArrayOnlyConsideringListOfKeys($expected = [
+                    't' => 'transaction',
+                    'trace_id' => '0d3ca349-e222-4982-ac23-2343692de258',
+                    'execution_source' => 'job',
+                    'execution_id' => '02cb9091-8973-427f-8d3f-042f2ec4e862',
+                    'execution_preview' => 'Tests\Feature\Sensors\ProcessedJob',
+                    'execution_stage' => 'action',
+                    'type' => 'committed',
+                ], $write[3], array_keys($expected));
+                $this->assertArrayIsIdenticalToArrayOnlyConsideringListOfKeys($expected = [
+                    't' => 'transaction',
+                    'trace_id' => '0d3ca349-e222-4982-ac23-2343692de258',
+                    'execution_source' => 'job',
+                    'execution_id' => '02cb9091-8973-427f-8d3f-042f2ec4e862',
+                    'execution_preview' => 'Tests\Feature\Sensors\ProcessedJob',
+                    'execution_stage' => 'action',
+                    'type' => 'begin',
+                ], $write[4], array_keys($expected));
+                $this->assertArrayIsIdenticalToArrayOnlyConsideringListOfKeys($expected = [
+                    't' => 'query',
+                    'trace_id' => '0d3ca349-e222-4982-ac23-2343692de258',
+                    'execution_source' => 'job',
+                    'execution_id' => '02cb9091-8973-427f-8d3f-042f2ec4e862',
+                    'execution_preview' => 'Tests\Feature\Sensors\ProcessedJob',
+                    'execution_stage' => 'action',
+                    'sql' => 'select * from "jobs" where "id" = ? limit 1',
+                ], $write[5], array_keys($expected));
                 $this->assertArrayIsIdenticalToArrayOnlyConsideringListOfKeys($expected = [
                     't' => 'query',
                     'trace_id' => '0d3ca349-e222-4982-ac23-2343692de258',
@@ -868,12 +931,21 @@ class JobAttemptSensorTest extends TestCase
                     'execution_preview' => 'Tests\Feature\Sensors\ProcessedJob',
                     'execution_stage' => 'action',
                     'sql' => 'delete from "jobs" where "id" = ?',
-                ], $write[3], array_keys($expected));
+                ], $write[6], array_keys($expected));
+                $this->assertArrayIsIdenticalToArrayOnlyConsideringListOfKeys($expected = [
+                    't' => 'transaction',
+                    'trace_id' => '0d3ca349-e222-4982-ac23-2343692de258',
+                    'execution_source' => 'job',
+                    'execution_id' => '02cb9091-8973-427f-8d3f-042f2ec4e862',
+                    'execution_preview' => 'Tests\Feature\Sensors\ProcessedJob',
+                    'execution_stage' => 'action',
+                    'type' => 'committed',
+                ], $write[7], array_keys($expected));
                 $this->assertArrayIsIdenticalToArrayOnlyConsideringListOfKeys($expected = [
                     't' => 'job-attempt',
                     'trace_id' => '0d3ca349-e222-4982-ac23-2343692de258',
                     'name' => 'Tests\Feature\Sensors\ProcessedJob',
-                ], $write[4], array_keys($expected));
+                ], $write[8], array_keys($expected));
                 $this->assertArrayIsIdenticalToArrayOnlyConsideringListOfKeys($expected = [
                     't' => 'cache-event',
                     'trace_id' => '0d3ca349-e222-4982-ac23-2343692de258',
@@ -883,7 +955,7 @@ class JobAttemptSensorTest extends TestCase
                     'execution_stage' => 'action',
                     'trace_id' => '0d3ca349-e222-4982-ac23-2343692de258',
                     'key' => 'illuminate:queue:restart',
-                ], $write[5], array_keys($expected));
+                ], $write[9], array_keys($expected));
 
                 return true;
             },
@@ -927,18 +999,18 @@ class JobAttemptSensorTest extends TestCase
                 ], $write[0], array_keys($expected));
             }, else: function () use ($write) {
                 if (version_compare(Application::VERSION, '12.40.0', '>=')) {
-                    $this->assertCount(8, $write);
+                    $this->assertCount(12, $write);
                     array_shift($write);
                 } else {
-                    $this->assertCount(7, $write);
+                    $this->assertCount(11, $write);
                 }
                 $this->assertArrayIsIdenticalToArrayOnlyConsideringListOfKeys($expected = [
                     't' => 'job-attempt',
                     'outgoing_requests' => 1,
-                ], $write[4], array_keys($expected));
+                ], $write[8], array_keys($expected));
                 $this->assertArrayIsIdenticalToArrayOnlyConsideringListOfKeys($expected = [
                     't' => 'outgoing-request',
-                ], $write[6], array_keys($expected));
+                ], $write[10], array_keys($expected));
             });
 
             return true;

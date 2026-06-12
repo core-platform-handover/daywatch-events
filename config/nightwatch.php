@@ -7,6 +7,10 @@ return [
     'server' => env('NIGHTWATCH_SERVER', (string) gethostname()),
     'capture_exception_source_code' => env('NIGHTWATCH_CAPTURE_EXCEPTION_SOURCE_CODE', true),
     'capture_request_payload' => env('NIGHTWATCH_CAPTURE_REQUEST_PAYLOAD', false),
+    'capture_query_bindings' => env('NIGHTWATCH_CAPTURE_QUERY_BINDINGS', false),
+    'capture_response_payload' => env('NIGHTWATCH_CAPTURE_RESPONSE_PAYLOAD', false),
+    'response_payload_max_size' => env('NIGHTWATCH_RESPONSE_PAYLOAD_MAX_SIZE', 65536),
+    'response_payload_max_objects' => env('NIGHTWATCH_RESPONSE_PAYLOAD_MAX_OBJECTS', 10),
     'redact_payload_fields' => explode(',', env('NIGHTWATCH_REDACT_PAYLOAD_FIELDS', '_token,password,password_confirmation')),
     'redact_headers' => explode(',', env('NIGHTWATCH_REDACT_HEADERS', 'Authorization,Cookie,Proxy-Authorization,X-XSRF-TOKEN')),
 
@@ -23,6 +27,7 @@ return [
         'ignore_notifications' => env('NIGHTWATCH_IGNORE_NOTIFICATIONS', false),
         'ignore_outgoing_requests' => env('NIGHTWATCH_IGNORE_OUTGOING_REQUESTS', false),
         'ignore_queries' => env('NIGHTWATCH_IGNORE_QUERIES', false),
+        'ignore_transactions' => env('NIGHTWATCH_IGNORE_TRANSACTIONS', false),
         'log_level' => env('NIGHTWATCH_LOG_LEVEL', env('LOG_LEVEL', 'debug')),
     ],
 

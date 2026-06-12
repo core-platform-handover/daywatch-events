@@ -27,6 +27,7 @@ use Livewire\Livewire;
 use Orchestra\Testbench\Attributes\WithEnv;
 use Tests\TestCase;
 
+use function collect;
 use function fseek;
 use function fwrite;
 use function hash;
@@ -38,6 +39,7 @@ use function ob_end_clean;
 use function ob_start;
 use function preg_match;
 use function preg_match_all;
+use function range;
 use function report;
 use function response;
 use function stream_get_meta_data;
@@ -116,6 +118,7 @@ class RequestSensorTest extends TestCase
                 'context' => Compatibility::$contextExists ? '{}' : '',
                 'headers' => '{"host":["localhost"],"user-agent":["Symfony"],"accept":["text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"],"accept-language":["en-us,en;q=0.5"],"accept-charset":["ISO-8859-1,utf-8;q=0.7,*;q=0.7"]}',
                 'payload' => '',
+                'response_payload' => '',
             ],
         ]);
     }
@@ -1134,6 +1137,163 @@ class RequestSensorTest extends TestCase
         $response->assertInternalServerError();
         $ingest->assertWrittenTimes(1);
         $ingest->assertLatestWrite('request:0.payload', '{"_nightwatch_error":"UNSUPPORTED_CONTENT_TYPE"}');
+    }
+
+    public function test_it_doesnt_capture_response_payload_by_default(): void
+    {
+        $ingest = $this->fakeIngest();
+        Route::get('/users', fn () => ['id' => 1, 'name' => 'Tim']);
+
+        $response = $this->get('/users');
+
+        $response->assertOk();
+        $ingest->assertWrittenTimes(1);
+        $ingest->assertLatestWrite('request:0.response_payload', '');
+    }
+
+    #[WithEnv('NIGHTWATCH_CAPTURE_RESPONSE_PAYLOAD', 'true')]
+    public function test_it_captures_json_response_payload_when_enabled(): void
+    {
+        $ingest = $this->fakeIngest();
+        Route::get('/users', fn () => ['id' => 1, 'name' => 'Tim']);
+
+        $response = $this->get('/users');
+
+        $response->assertOk();
+        $ingest->assertWrittenTimes(1);
+        $ingest->assertLatestWrite('request:0.response_payload', '{"id":1,"name":"Tim"}');
+    }
+
+    #[WithEnv('NIGHTWATCH_CAPTURE_RESPONSE_PAYLOAD', 'true')]
+    public function test_it_captures_small_json_list_responses_without_truncation(): void
+    {
+        $ingest = $this->fakeIngest();
+        Route::get('/users', fn () => collect(range(1, 12))->map(fn ($i) => ['i' => $i])->all());
+
+        $response = $this->get('/users');
+
+        $response->assertOk();
+        $ingest->assertWrittenTimes(1);
+        $ingest->assertLatestWrite('request:0.response_payload', function ($payload) {
+            $this->assertCount(12, json_decode($payload, true));
+
+            return true;
+        });
+    }
+
+    #[WithEnv('NIGHTWATCH_CAPTURE_RESPONSE_PAYLOAD', 'true')]
+    #[WithEnv('NIGHTWATCH_RESPONSE_PAYLOAD_MAX_SIZE', '50')]
+    public function test_it_truncates_json_list_responses_over_the_max_size(): void
+    {
+        $ingest = $this->fakeIngest();
+        Route::get('/users', fn () => collect(range(1, 12))->map(fn ($i) => ['i' => $i])->all());
+
+        $response = $this->get('/users');
+
+        $response->assertOk();
+        $ingest->assertWrittenTimes(1);
+        $ingest->assertLatestWrite(
+            'request:0.response_payload',
+            '[{"i":1},{"i":2},{"i":3},{"i":4},{"i":5},{"i":6},{"i":7},{"i":8},{"i":9},{"i":10},{"more_truncated_objects":2}]'
+        );
+    }
+
+    #[WithEnv('NIGHTWATCH_CAPTURE_RESPONSE_PAYLOAD', 'true')]
+    #[WithEnv('NIGHTWATCH_RESPONSE_PAYLOAD_MAX_SIZE', '50')]
+    #[WithEnv('NIGHTWATCH_RESPONSE_PAYLOAD_MAX_OBJECTS', '2')]
+    public function test_the_truncation_object_count_is_configurable(): void
+    {
+        $ingest = $this->fakeIngest();
+        Route::get('/users', fn () => collect(range(1, 12))->map(fn ($i) => ['i' => $i])->all());
+
+        $response = $this->get('/users');
+
+        $response->assertOk();
+        $ingest->assertWrittenTimes(1);
+        $ingest->assertLatestWrite(
+            'request:0.response_payload',
+            '[{"i":1},{"i":2},{"more_truncated_objects":10}]'
+        );
+    }
+
+    #[WithEnv('NIGHTWATCH_CAPTURE_RESPONSE_PAYLOAD', 'true')]
+    #[WithEnv('NIGHTWATCH_RESPONSE_PAYLOAD_MAX_SIZE', '50')]
+    public function test_it_truncates_the_data_key_of_resource_collection_responses(): void
+    {
+        $ingest = $this->fakeIngest();
+        Route::get('/users', fn () => [
+            'data' => collect(range(1, 12))->map(fn ($i) => ['i' => $i])->all(),
+            'meta' => ['total' => 12],
+        ]);
+
+        $response = $this->get('/users');
+
+        $response->assertOk();
+        $ingest->assertWrittenTimes(1);
+        $ingest->assertLatestWrite(
+            'request:0.response_payload',
+            '{"data":[{"i":1},{"i":2},{"i":3},{"i":4},{"i":5},{"i":6},{"i":7},{"i":8},{"i":9},{"i":10},{"more_truncated_objects":2}],"meta":{"total":12}}'
+        );
+    }
+
+    #[WithEnv('NIGHTWATCH_CAPTURE_RESPONSE_PAYLOAD', 'true')]
+    #[WithEnv('NIGHTWATCH_RESPONSE_PAYLOAD_MAX_SIZE', '50')]
+    public function test_it_saves_object_responses_fully_even_when_over_the_max_size(): void
+    {
+        $ingest = $this->fakeIngest();
+        Route::get('/users', fn () => [
+            'id' => 1,
+            'name' => 'Tim',
+            'biography' => 'A very long biography that pushes this response over the configured fifty byte limit.',
+        ]);
+
+        $response = $this->get('/users');
+
+        $response->assertOk();
+        $ingest->assertWrittenTimes(1);
+        $ingest->assertLatestWrite(
+            'request:0.response_payload',
+            '{"id":1,"name":"Tim","biography":"A very long biography that pushes this response over the configured fifty byte limit."}'
+        );
+    }
+
+    #[WithEnv('NIGHTWATCH_CAPTURE_RESPONSE_PAYLOAD', 'true')]
+    public function test_it_stores_a_marker_for_html_responses(): void
+    {
+        $ingest = $this->fakeIngest();
+        Route::get('/users', fn () => '<html><body>Hello</body></html>');
+
+        $response = $this->get('/users');
+
+        $response->assertOk();
+        $ingest->assertWrittenTimes(1);
+        $ingest->assertLatestWrite('request:0.response_payload', '"HTML Response"');
+    }
+
+    #[WithEnv('NIGHTWATCH_CAPTURE_RESPONSE_PAYLOAD', 'true')]
+    public function test_it_doesnt_capture_non_json_non_html_responses(): void
+    {
+        $ingest = $this->fakeIngest();
+        Route::get('/users', fn () => response('plain text', 200, ['Content-Type' => 'text/plain']));
+
+        $response = $this->get('/users');
+
+        $response->assertOk();
+        $ingest->assertWrittenTimes(1);
+        $ingest->assertLatestWrite('request:0.response_payload', '');
+    }
+
+    #[WithEnv('NIGHTWATCH_CAPTURE_RESPONSE_PAYLOAD', 'true')]
+    public function test_it_redacts_configured_fields_in_the_response_payload(): void
+    {
+        $ingest = $this->fakeIngest();
+        Route::get('/users', fn () => ['name' => 'Tim', 'password' => 'secret']);
+
+        $response = $this->get('/users');
+
+        $response->assertOk();
+        $ingest->assertWrittenTimes(1);
+        $ingest->assertLatestWrite('request:0.response_payload', '{"name":"Tim","password":"[6 bytes redacted]"}');
     }
 
     public function test_livewire_2(): void

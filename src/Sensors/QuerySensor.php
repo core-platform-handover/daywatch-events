@@ -11,9 +11,12 @@ use Laravel\Nightwatch\Records\Query;
 use Laravel\Nightwatch\State\CommandState;
 use Laravel\Nightwatch\State\RequestState;
 use Laravel\Nightwatch\Types\Str;
+use Throwable;
 
 use function hash;
 use function in_array;
+use function json_encode;
+use function method_exists;
 use function preg_replace;
 use function round;
 use function str_contains;
@@ -27,6 +30,7 @@ final class QuerySensor
         private RequestState|CommandState $executionState,
         private Clock $clock,
         private Location $location,
+        private bool $captureBindings = false,
     ) {
         //
     }
@@ -48,6 +52,8 @@ final class QuerySensor
         return [
             $record = new Query(
                 sql: $event->sql,
+                bindings: $this->captureBindings ? $this->preparedBindings($event) : null,
+                rawSql: $this->captureBindings ? $this->rawSql($event) : '',
                 file: $file ?? '',
                 line: $line ?? 0,
                 duration: $durationInMicroseconds,
@@ -71,6 +77,8 @@ final class QuerySensor
                     'execution_stage' => $this->executionState->stage,
                     'user' => $this->executionState->user->id(),
                     'sql' => Str::mediumText($record->sql),
+                    'bindings' => $this->serializedBindings($record),
+                    'raw_sql' => Str::mediumText($record->rawSql),
                     'file' => Str::tinyText($record->file),
                     'line' => $record->line,
                     'duration' => $record->duration,
@@ -79,6 +87,52 @@ final class QuerySensor
                 ];
             },
         ];
+    }
+
+    /**
+     * @return list<mixed>
+     */
+    private function preparedBindings(QueryExecuted $event): array
+    {
+        try {
+            return $event->connection->prepareBindings($event->bindings);
+        } catch (Throwable) {
+            return $event->bindings;
+        }
+    }
+
+    private function rawSql(QueryExecuted $event): string
+    {
+        try {
+            if (method_exists($event, 'toRawSql')) {
+                return $event->toRawSql();
+            }
+
+            $grammar = $event->connection->getQueryGrammar();
+
+            if (method_exists($grammar, 'substituteBindingsIntoRawSql')) {
+                return $grammar->substituteBindingsIntoRawSql(
+                    $event->sql, $event->connection->prepareBindings($event->bindings)
+                );
+            }
+        } catch (Throwable) {
+            //
+        }
+
+        return '';
+    }
+
+    private function serializedBindings(Query $record): string
+    {
+        if ($record->bindings === null) {
+            return '';
+        }
+
+        try {
+            return Str::mediumText((string) json_encode($record->bindings, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION | JSON_INVALID_UTF8_SUBSTITUTE));
+        } catch (Throwable) {
+            return '["_nightwatch_error: Failed to serialize bindings"]';
+        }
     }
 
     private function hash(QueryExecuted $event, Query $record): string

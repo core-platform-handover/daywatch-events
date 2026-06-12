@@ -8,6 +8,10 @@ use Illuminate\Console\Events\ScheduledTaskFinished;
 use Illuminate\Console\Events\ScheduledTaskSkipped;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Database\Events\TransactionBeginning;
+use Illuminate\Database\Events\TransactionCommitted;
+use Illuminate\Database\Events\TransactionCommitting;
+use Illuminate\Database\Events\TransactionRolledBack;
 use Illuminate\Http\Request;
 use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Mail\Events\MessageSent;
@@ -27,6 +31,7 @@ use Laravel\Nightwatch\Records\OutgoingRequest;
 use Laravel\Nightwatch\Records\Query;
 use Laravel\Nightwatch\Records\QueuedJob;
 use Laravel\Nightwatch\Records\Request as RequestRecord;
+use Laravel\Nightwatch\Records\Transaction;
 use Laravel\Nightwatch\Sensors\CacheEventSensor;
 use Laravel\Nightwatch\Sensors\CommandSensor;
 use Laravel\Nightwatch\Sensors\ExceptionSensor;
@@ -40,6 +45,7 @@ use Laravel\Nightwatch\Sensors\QueuedJobSensor;
 use Laravel\Nightwatch\Sensors\RequestSensor;
 use Laravel\Nightwatch\Sensors\ScheduledTaskSensor;
 use Laravel\Nightwatch\Sensors\StageSensor;
+use Laravel\Nightwatch\Sensors\TransactionSensor;
 use Laravel\Nightwatch\Sensors\UserSensor;
 use Laravel\Nightwatch\State\CommandState;
 use Laravel\Nightwatch\State\RequestState;
@@ -82,6 +88,11 @@ final class SensorManager
      * @var (callable(QueryExecuted, list<array{ file?: string, line?: int }>): array{0: Query, 1: callable(): array<mixed>})|null
      */
     public $querySensor;
+
+    /**
+     * @var (callable(TransactionBeginning|TransactionCommitting|TransactionCommitted|TransactionRolledBack): array{0: Transaction, 1: callable(): array<mixed>})|null
+     */
+    public $transactionSensor;
 
     /**
      * @var (callable(JobQueueing|JobQueued): ?array{0: QueuedJob, 1: callable(): array<mixed>})|null
@@ -138,6 +149,10 @@ final class SensorManager
         public Location $location,
         private bool $captureExceptionSourceCode,
         private bool $captureRequestPayload,
+        private bool $captureQueryBindings,
+        private bool $captureResponsePayload,
+        private int $responsePayloadMaxSize,
+        private int $responsePayloadMaxObjects,
         private array $redactPayloadFields,
         private array $redactHeaders,
         private Repository $config,
@@ -163,6 +178,9 @@ final class SensorManager
         $sensor = $this->requestSensor ??= new RequestSensor(
             requestState: $this->executionState, // @phpstan-ignore argument.type
             capturePayload: $this->captureRequestPayload,
+            captureResponsePayload: $this->captureResponsePayload,
+            responsePayloadMaxSize: $this->responsePayloadMaxSize,
+            responsePayloadMaxObjects: $this->responsePayloadMaxObjects,
             redactPayloadFields: $this->redactPayloadFields,
             redactHeaders: $this->redactHeaders,
         );
@@ -192,9 +210,23 @@ final class SensorManager
             executionState: $this->executionState,
             clock: $this->clock,
             location: $this->location,
+            captureBindings: $this->captureQueryBindings,
         );
 
         return $sensor($event, $trace);
+    }
+
+    /**
+     * @return array{0: Transaction, 1: callable(): array<mixed>}
+     */
+    public function transaction(TransactionBeginning|TransactionCommitting|TransactionCommitted|TransactionRolledBack $event): array
+    {
+        $sensor = $this->transactionSensor ??= new TransactionSensor(
+            executionState: $this->executionState,
+            clock: $this->clock,
+        );
+
+        return $sensor($event);
     }
 
     /**
@@ -368,6 +400,7 @@ final class SensorManager
         $this->logSensor = null;
         $this->outgoingRequestSensor = null;
         $this->querySensor = null;
+        $this->transactionSensor = null;
         $this->queuedJobSensor = null;
         $this->jobAttemptSensor = null;
         $this->notificationSensor = null;

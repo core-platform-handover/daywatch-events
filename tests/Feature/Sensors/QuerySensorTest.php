@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
 use Laravel\Nightwatch\Compatibility;
 use MongoDB\Laravel\Connection as MongoDbConnection;
+use Orchestra\Testbench\Attributes\WithEnv;
 use PDO;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SingleStore\Laravel\Connect\Connection as LegacySingleStoreConnection;
@@ -92,6 +93,8 @@ class QuerySensorTest extends TestCase
                 'execution_stage' => 'action',
                 'user' => '',
                 'sql' => 'select * from "users"',
+                'bindings' => '',
+                'raw_sql' => '',
                 'file' => 'tests/Feature/Sensors/QuerySensorTest.php',
                 'line' => $line,
                 'duration' => 4321,
@@ -118,6 +121,56 @@ class QuerySensorTest extends TestCase
         $ingest->assertWrittenTimes(1);
         $ingest->assertLatestWrite('query:0.file', 'tests/Feature/Sensors/QuerySensorTest.php');
         $ingest->assertLatestWrite('query:0.line', $line);
+    }
+
+    public function test_it_does_not_capture_bindings_or_raw_sql_by_default(): void
+    {
+        $ingest = $this->fakeIngest();
+        Route::get('/users', function () {
+            return DB::table('users')->where('id', 99)->where('name', 'tim')->get();
+        });
+
+        $response = $this->get('/users');
+
+        $response->assertOk();
+        $ingest->assertWrittenTimes(1);
+        $ingest->assertLatestWrite('query:0.sql', 'select * from "users" where "id" = ? and "name" = ?');
+        $ingest->assertLatestWrite('query:0.bindings', '');
+        $ingest->assertLatestWrite('query:0.raw_sql', '');
+    }
+
+    #[WithEnv('NIGHTWATCH_CAPTURE_QUERY_BINDINGS', 'true')]
+    public function test_it_captures_bindings_and_raw_sql_when_enabled(): void
+    {
+        $ingest = $this->fakeIngest();
+        Route::get('/users', function () {
+            return DB::table('users')->where('id', 99)->where('name', 'tim')->get();
+        });
+
+        $response = $this->get('/users');
+
+        $response->assertOk();
+        $ingest->assertWrittenTimes(1);
+        $ingest->assertLatestWrite('query:0.sql', 'select * from "users" where "id" = ? and "name" = ?');
+        $ingest->assertLatestWrite('query:0.bindings', '[99,"tim"]');
+        $ingest->assertLatestWrite('query:0.raw_sql', 'select * from "users" where "id" = 99 and "name" = \'tim\'');
+    }
+
+    #[WithEnv('NIGHTWATCH_CAPTURE_QUERY_BINDINGS', 'true')]
+    public function test_capturing_bindings_does_not_change_the_group_hash(): void
+    {
+        $ingest = $this->fakeIngest();
+        Route::get('/users', function () {
+            return DB::table('users')->where('id', 99)->get();
+        });
+
+        $response = $this->get('/users');
+
+        $this->assertTrue(in_array($connection = Config::get('database.default'), ['testing', 'sqlite'], true));
+
+        $response->assertOk();
+        $ingest->assertWrittenTimes(1);
+        $ingest->assertLatestWrite('query:0._group', hash('xxh128', $connection.',select * from "users" where "id" = ?'));
     }
 
     public function test_it_captures_aggregate_query_data_on_the_request(): void

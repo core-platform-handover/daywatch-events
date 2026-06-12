@@ -23,6 +23,10 @@ use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Http\Kernel as HttpKernelContract;
 use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Database\Events\TransactionBeginning;
+use Illuminate\Database\Events\TransactionCommitted;
+use Illuminate\Database\Events\TransactionCommitting;
+use Illuminate\Database\Events\TransactionRolledBack;
 use Illuminate\Foundation\Events\Terminating;
 use Illuminate\Foundation\Http\Events\RequestHandled;
 use Illuminate\Http\Client\Factory as Http;
@@ -69,6 +73,7 @@ use Laravel\Nightwatch\Hooks\ResponsePreparedListener;
 use Laravel\Nightwatch\Hooks\RouteMatchedListener;
 use Laravel\Nightwatch\Hooks\RouteMiddleware;
 use Laravel\Nightwatch\Hooks\TerminatingListener;
+use Laravel\Nightwatch\Hooks\TransactionListener;
 use Laravel\Nightwatch\Http\Middleware\Sample;
 use Laravel\Nightwatch\State\CommandState;
 use Laravel\Nightwatch\State\RequestState;
@@ -116,6 +121,7 @@ final class NightwatchServiceProvider extends ServiceProvider
      *         ignore_notifications?: bool,
      *         ignore_outgoing_requests?: bool,
      *         ignore_queries?: bool,
+     *         ignore_transactions?: bool,
      *         log_level?: \Psr\Log\LogLevel::*,
      *     },
      *     token?: string,
@@ -124,6 +130,10 @@ final class NightwatchServiceProvider extends ServiceProvider
      *     ingest?: array{ uri?: string, timeout?: float|int, connection_timeout?: float|int, event_buffer?: int },
      *     capture_exception_source_code?: bool,
      *     capture_request_payload?: bool,
+     *     capture_query_bindings?: bool,
+     *     capture_response_payload?: bool,
+     *     response_payload_max_size?: int,
+     *     response_payload_max_objects?: int,
      *     redact_payload_fields?: string[],
      *     redact_headers?: string[],
      *  }
@@ -268,6 +278,10 @@ final class NightwatchServiceProvider extends ServiceProvider
                 ),
                 captureExceptionSourceCode: (bool) ($this->nightwatchConfig['capture_exception_source_code'] ?? true),
                 captureRequestPayload: (bool) ($this->nightwatchConfig['capture_request_payload'] ?? false),
+                captureQueryBindings: (bool) ($this->nightwatchConfig['capture_query_bindings'] ?? false),
+                captureResponsePayload: (bool) ($this->nightwatchConfig['capture_response_payload'] ?? false),
+                responsePayloadMaxSize: (int) ($this->nightwatchConfig['response_payload_max_size'] ?? 65536),
+                responsePayloadMaxObjects: (int) ($this->nightwatchConfig['response_payload_max_objects'] ?? 10),
                 redactPayloadFields: $this->nightwatchConfig['redact_payload_fields'] ?? ['_token', 'password', 'password_confirmation'],
                 redactHeaders: $this->nightwatchConfig['redact_headers'] ?? ['Authorization', 'Cookie', 'Proxy-Authorization', 'X-XSRF-TOKEN'],
                 config: $this->config,
@@ -289,6 +303,7 @@ final class NightwatchServiceProvider extends ServiceProvider
                     'ignore_notifications' => (bool) ($this->nightwatchConfig['filtering']['ignore_notifications'] ?? false),
                     'ignore_outgoing_requests' => (bool) ($this->nightwatchConfig['filtering']['ignore_outgoing_requests'] ?? false),
                     'ignore_queries' => (bool) ($this->nightwatchConfig['filtering']['ignore_queries'] ?? false),
+                    'ignore_transactions' => (bool) ($this->nightwatchConfig['filtering']['ignore_transactions'] ?? false),
                 ],
             ],
         ));
@@ -334,6 +349,16 @@ final class NightwatchServiceProvider extends ServiceProvider
          * @see \Laravel\Nightwatch\Records\Query
          */
         $events->listen(QueryExecuted::class, (new QueryExecutedListener($core))(...));
+
+        /**
+         * @see \Laravel\Nightwatch\Records\Transaction
+         */
+        $events->listen([
+            TransactionBeginning::class,
+            TransactionCommitting::class,
+            TransactionCommitted::class,
+            TransactionRolledBack::class,
+        ], (new TransactionListener($core))(...));
 
         /**
          * @see \Laravel\Nightwatch\Records\Exception

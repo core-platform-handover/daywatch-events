@@ -44,6 +44,7 @@ final class Core
      *         ignore_notifications: bool,
      *         ignore_outgoing_requests: bool,
      *         ignore_queries: bool,
+     *         ignore_transactions: bool,
      *     },
      * }  $config
      */

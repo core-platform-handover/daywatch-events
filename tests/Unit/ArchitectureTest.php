@@ -47,6 +47,7 @@ class ArchitectureTest extends TestCase
             \Laravel\Nightwatch\Records\Query::class,
             \Laravel\Nightwatch\Records\QueuedJob::class,
             \Laravel\Nightwatch\Records\Request::class,
+            \Laravel\Nightwatch\Records\Transaction::class,
         ];
 
         foreach ($this->classes() as $class) {

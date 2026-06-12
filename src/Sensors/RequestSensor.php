@@ -14,12 +14,16 @@ use Laravel\Nightwatch\State\RequestState;
 use Laravel\Nightwatch\Types\Str;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
+use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
+use function array_is_list;
 use function array_map;
+use function array_slice;
 use function array_sum;
 use function assert;
+use function count;
 use function hash;
 use function implode;
 use function in_array;
@@ -27,9 +31,11 @@ use function is_array;
 use function is_int;
 use function is_numeric;
 use function is_string;
+use function json_decode;
 use function json_encode;
 use function rescue;
 use function sort;
+use function str_contains;
 use function strlen;
 use function tap;
 
@@ -48,6 +54,9 @@ final class RequestSensor
     public function __construct(
         private RequestState $requestState,
         private bool $capturePayload,
+        private bool $captureResponsePayload,
+        private int $responsePayloadMaxSize,
+        private int $responsePayloadMaxObjects,
         private array $redactPayloadFields,
         private array $redactHeaders,
     ) {
@@ -161,6 +170,7 @@ final class RequestSensor
                         },
                     ),
                     'payload' => $this->serializePayload($request, $response, $record),
+                    'response_payload' => $this->serializeResponsePayload($response),
                 ];
             },
         ];
@@ -228,6 +238,91 @@ final class RequestSensor
     {
         return $request->isJson()
             || in_array($request->headers->get('content-type'), ['application/x-www-form-urlencoded', 'multipart/form-data'], true);
+    }
+
+    private function serializeResponsePayload(Response $response): string
+    {
+        if (! $this->captureResponsePayload) {
+            return '';
+        }
+
+        $contentType = (string) $response->headers->get('content-type');
+
+        if (str_contains($contentType, 'html')) {
+            return '"HTML Response"';
+        }
+
+        if (! $response instanceof JsonResponse && ! str_contains($contentType, 'json')) {
+            return '';
+        }
+
+        $content = $response->getContent();
+
+        if (! is_string($content) || $content === '') {
+            return '';
+        }
+
+        return Str::mediumText(rescue(
+            fn () => $this->truncateAndEncodeResponse($content),
+            '{"_nightwatch_error":"SERIALIZATION_FAILED"}',
+            static function ($e) {
+                Nightwatch::unrecoverableExceptionOccurred($e);
+
+                return false;
+            },
+        ));
+    }
+
+    private function truncateAndEncodeResponse(string $content): string
+    {
+        $decoded = json_decode($content, true, flags: JSON_THROW_ON_ERROR);
+
+        if (is_array($decoded)) {
+            $decoded = $this->redactRecursively($decoded);
+
+            if (strlen($content) > $this->responsePayloadMaxSize) {
+                $decoded = $this->truncateResponseObjects($decoded);
+            }
+        }
+
+        return (string) json_encode($decoded, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION);
+    }
+
+    /**
+     * Lists are truncated to the first {@see $responsePayloadMaxObjects}
+     * objects. Resource collections (`{data: [...]}`) have the rule applied to
+     * `data`. Anything else is kept whole.
+     *
+     * @param  array<mixed>  $decoded
+     * @return array<mixed>
+     */
+    private function truncateResponseObjects(array $decoded): array
+    {
+        if (array_is_list($decoded)) {
+            return $this->truncateList($decoded);
+        }
+
+        if (isset($decoded['data']) && is_array($decoded['data']) && array_is_list($decoded['data'])) {
+            $decoded['data'] = $this->truncateList($decoded['data']);
+        }
+
+        return $decoded;
+    }
+
+    /**
+     * @param  list<mixed>  $list
+     * @return list<mixed>
+     */
+    private function truncateList(array $list): array
+    {
+        if (count($list) <= $this->responsePayloadMaxObjects) {
+            return $list;
+        }
+
+        return [
+            ...array_slice($list, 0, $this->responsePayloadMaxObjects),
+            ['more_truncated_objects' => count($list) - $this->responsePayloadMaxObjects],
+        ];
     }
 
     /**
