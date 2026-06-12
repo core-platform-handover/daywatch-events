@@ -1,5 +1,5 @@
 {
-    "name": "laravel/nightwatch",
+    "name": "oritech/daywatch-events",
     "description": "The official Laravel Nightwatch package.",
     "keywords": [
         "laravel",
