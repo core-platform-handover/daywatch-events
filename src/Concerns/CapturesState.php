@@ -291,9 +291,9 @@ trait CapturesState
     /**
      * @internal
      */
-    public function outgoingRequest(float $startMicrotime, float $endMicrotime, RequestInterface $request, ResponseInterface $response): void
+    public function outgoingRequest(float $startMicrotime, float $endMicrotime, RequestInterface $request, ResponseInterface $response, ?string $requestBody = null, ?string $responseBody = null): void
     {
-        [$record, $resolver] = $this->sensor->outgoingRequest($startMicrotime, $endMicrotime, $request, $response);
+        [$record, $resolver] = $this->sensor->outgoingRequest($startMicrotime, $endMicrotime, $request, $response, $requestBody, $responseBody);
 
         foreach ($this->rejectOutgoingRequestCallbacks as $callback) {
             if ($this->ignore(static fn () => ($callback)($record))) {

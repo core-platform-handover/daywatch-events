@@ -32,6 +32,7 @@ final class Core
      * @param  TState  $executionState
      * @param  array{
      *     enabled: bool,
+     *     capture_outgoing_payload?: bool,
      *     sampling: array{
      *         requests: float,
      *         commands: float,

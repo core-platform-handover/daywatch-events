@@ -10,12 +10,15 @@ use GuzzleHttp\Psr7\StreamDecoratorTrait;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use Laravel\Nightwatch\Facades\Nightwatch;
+use Orchestra\Testbench\Attributes\WithEnv;
 use Psr\Http\Message\StreamInterface;
 use RuntimeException;
 use Tests\TestCase;
 
+use function collect;
 use function hash;
 use function now;
+use function range;
 use function str_repeat;
 
 class OutgoingRequestSensorTest extends TestCase
@@ -76,8 +79,74 @@ class OutgoingRequestSensorTest extends TestCase
                 'request_size' => 2000,
                 'response_size' => 3000,
                 'status_code' => 200,
+                'payload' => str_repeat('b', 2000),
+                'response_payload' => str_repeat('a', 3000),
             ],
         ]);
+    }
+
+    #[WithEnv('NIGHTWATCH_CAPTURE_OUTGOING_PAYLOAD', 'true')]
+    public function test_it_captures_the_outgoing_request_and_response_payload_when_enabled(): void
+    {
+        $ingest = $this->fakeIngest();
+        Route::post('/users', function (): void {
+            Http::asJson()->post('https://laravel.com', ['name' => 'Tim']);
+        });
+        Http::fake([
+            'https://laravel.com' => Http::response(['id' => 1, 'name' => 'Tim'], headers: ['Content-Type' => 'application/json']),
+        ]);
+
+        $response = $this->post('/users');
+
+        $response->assertOk();
+        $ingest->assertWrittenTimes(1);
+        $ingest->assertLatestWrite('outgoing-request:0.payload', '{"name":"Tim"}');
+        $ingest->assertLatestWrite('outgoing-request:0.response_payload', '{"id":1,"name":"Tim"}');
+    }
+
+    #[WithEnv('NIGHTWATCH_CAPTURE_OUTGOING_PAYLOAD', 'true')]
+    #[WithEnv('NIGHTWATCH_REDACT_PAYLOAD_FIELDS', 'password')]
+    public function test_it_redacts_configured_fields_in_the_outgoing_payload(): void
+    {
+        $ingest = $this->fakeIngest();
+        Route::post('/users', function (): void {
+            Http::asJson()->post('https://laravel.com', ['name' => 'Tim', 'password' => 'secret']);
+        });
+        Http::fake([
+            'https://laravel.com' => Http::response(['ok' => true], headers: ['Content-Type' => 'application/json']),
+        ]);
+
+        $response = $this->post('/users');
+
+        $response->assertOk();
+        $ingest->assertWrittenTimes(1);
+        $ingest->assertLatestWrite('outgoing-request:0.payload', '{"name":"Tim","password":"[6 bytes redacted]"}');
+        $this->assertStringNotContainsString('secret', $ingest->latestWriteAsString());
+    }
+
+    #[WithEnv('NIGHTWATCH_CAPTURE_OUTGOING_PAYLOAD', 'true')]
+    #[WithEnv('NIGHTWATCH_OUTGOING_RESPONSE_PAYLOAD_MAX_SIZE', '50')]
+    public function test_it_truncates_large_outgoing_json_list_responses(): void
+    {
+        $ingest = $this->fakeIngest();
+        Route::post('/users', function (): void {
+            Http::post('https://laravel.com');
+        });
+        Http::fake([
+            'https://laravel.com' => Http::response(
+                collect(range(1, 12))->map(fn ($i) => ['i' => $i])->all(),
+                headers: ['Content-Type' => 'application/json'],
+            ),
+        ]);
+
+        $response = $this->post('/users');
+
+        $response->assertOk();
+        $ingest->assertWrittenTimes(1);
+        $ingest->assertLatestWrite(
+            'outgoing-request:0.response_payload',
+            '[{"i":1},{"i":2},{"i":3},{"i":4},{"i":5},{"i":6},{"i":7},{"i":8},{"i":9},{"i":10},{"more_truncated_objects":2}]'
+        );
     }
 
     public function test_it_captures_the_request_response_size_bytes_from_the_content_length_header(): void

@@ -9,8 +9,11 @@ return [
     'capture_request_payload' => env('NIGHTWATCH_CAPTURE_REQUEST_PAYLOAD', true),
     'capture_query_bindings' => env('NIGHTWATCH_CAPTURE_QUERY_BINDINGS', true),
     'capture_response_payload' => env('NIGHTWATCH_CAPTURE_RESPONSE_PAYLOAD', true),
-    'response_payload_max_size' => env('NIGHTWATCH_RESPONSE_PAYLOAD_MAX_SIZE', 65536),
+    'response_payload_max_size' => env('NIGHTWATCH_RESPONSE_PAYLOAD_MAX_SIZE', 16384),
     'response_payload_max_objects' => env('NIGHTWATCH_RESPONSE_PAYLOAD_MAX_OBJECTS', 10),
+    'capture_outgoing_payload' => env('NIGHTWATCH_CAPTURE_OUTGOING_PAYLOAD', true),
+    'outgoing_request_payload_max_size' => env('NIGHTWATCH_OUTGOING_REQUEST_PAYLOAD_MAX_SIZE', 16384),
+    'outgoing_response_payload_max_size' => env('NIGHTWATCH_OUTGOING_RESPONSE_PAYLOAD_MAX_SIZE', 16384),
     'redact_payload_fields' => explode(',', env('NIGHTWATCH_REDACT_PAYLOAD_FIELDS', '_token,password,password_confirmation')),
     'redact_headers' => explode(',', env('NIGHTWATCH_REDACT_HEADERS', 'Authorization,Cookie,Proxy-Authorization,X-XSRF-TOKEN')),
 

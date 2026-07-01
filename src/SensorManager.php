@@ -153,6 +153,9 @@ final class SensorManager
         private bool $captureResponsePayload,
         private int $responsePayloadMaxSize,
         private int $responsePayloadMaxObjects,
+        private bool $captureOutgoingPayload,
+        private int $outgoingRequestPayloadMaxSize,
+        private int $outgoingResponsePayloadMaxSize,
         private array $redactPayloadFields,
         private array $redactHeaders,
         private Repository $config,
@@ -271,13 +274,18 @@ final class SensorManager
     /**
      * @return array{0: OutgoingRequest, 1: callable(): array<mixed>}
      */
-    public function outgoingRequest(float $startMicrotime, float $endMicrotime, RequestInterface $request, ResponseInterface $response): array
+    public function outgoingRequest(float $startMicrotime, float $endMicrotime, RequestInterface $request, ResponseInterface $response, ?string $requestBody = null, ?string $responseBody = null): array
     {
         $sensor = $this->outgoingRequestSensor ??= new OutgoingRequestSensor(
             executionState: $this->executionState,
+            capturePayload: $this->captureOutgoingPayload,
+            requestPayloadMaxSize: $this->outgoingRequestPayloadMaxSize,
+            responsePayloadMaxSize: $this->outgoingResponsePayloadMaxSize,
+            responsePayloadMaxObjects: $this->responsePayloadMaxObjects,
+            redactPayloadFields: $this->redactPayloadFields,
         );
 
-        return $sensor($startMicrotime, $endMicrotime, $request, $response);
+        return $sensor($startMicrotime, $endMicrotime, $request, $response, $requestBody, $responseBody);
     }
 
     /**

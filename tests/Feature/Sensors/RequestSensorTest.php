@@ -63,6 +63,7 @@ class RequestSensorTest extends TestCase
         $this->setExecutionStart(CarbonImmutable::parse('2000-01-01 01:02:03.456789'));
     }
 
+    #[WithEnv('NIGHTWATCH_CAPTURE_RESPONSE_PAYLOAD', 'false')]
     public function test_it_can_ingest_requests(): void
     {
         $ingest = $this->fakeIngest();
@@ -1047,7 +1048,8 @@ class RequestSensorTest extends TestCase
         });
     }
 
-    public function test_it_doesnt_capture_request_payload_on_unhandled_exceptions_by_default(): void
+    #[WithEnv('NIGHTWATCH_CAPTURE_REQUEST_PAYLOAD', 'false')]
+    public function test_it_doesnt_capture_request_payload_on_unhandled_exceptions_when_disabled(): void
     {
         $ingest = $this->fakeIngest();
         Route::patch('/register', function () {
@@ -1139,7 +1141,8 @@ class RequestSensorTest extends TestCase
         $ingest->assertLatestWrite('request:0.payload', '{"_nightwatch_error":"UNSUPPORTED_CONTENT_TYPE"}');
     }
 
-    public function test_it_doesnt_capture_response_payload_by_default(): void
+    #[WithEnv('NIGHTWATCH_CAPTURE_RESPONSE_PAYLOAD', 'false')]
+    public function test_it_doesnt_capture_response_payload_when_disabled(): void
     {
         $ingest = $this->fakeIngest();
         Route::get('/users', fn () => ['id' => 1, 'name' => 'Tim']);
@@ -1238,7 +1241,7 @@ class RequestSensorTest extends TestCase
 
     #[WithEnv('NIGHTWATCH_CAPTURE_RESPONSE_PAYLOAD', 'true')]
     #[WithEnv('NIGHTWATCH_RESPONSE_PAYLOAD_MAX_SIZE', '50')]
-    public function test_it_saves_object_responses_fully_even_when_over_the_max_size(): void
+    public function test_it_truncates_object_responses_over_the_max_size_at_the_byte_ceiling(): void
     {
         $ingest = $this->fakeIngest();
         Route::get('/users', fn () => [
@@ -1251,9 +1254,11 @@ class RequestSensorTest extends TestCase
 
         $response->assertOk();
         $ingest->assertWrittenTimes(1);
+        // A single object can't be object-count truncated, so the hard byte
+        // ceiling cuts it (on a UTF-8 boundary) with a marker.
         $ingest->assertLatestWrite(
             'request:0.response_payload',
-            '{"id":1,"name":"Tim","biography":"A very long biography that pushes this response over the configured fifty byte limit."}'
+            '{"id":1,"name":"Tim","biography":"A very long biog…[truncated 71 bytes]'
         );
     }
 

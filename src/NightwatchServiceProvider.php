@@ -282,6 +282,9 @@ final class NightwatchServiceProvider extends ServiceProvider
                 captureResponsePayload: (bool) ($this->nightwatchConfig['capture_response_payload'] ?? false),
                 responsePayloadMaxSize: (int) ($this->nightwatchConfig['response_payload_max_size'] ?? 65536),
                 responsePayloadMaxObjects: (int) ($this->nightwatchConfig['response_payload_max_objects'] ?? 10),
+                captureOutgoingPayload: (bool) ($this->nightwatchConfig['capture_outgoing_payload'] ?? false),
+                outgoingRequestPayloadMaxSize: (int) ($this->nightwatchConfig['outgoing_request_payload_max_size'] ?? 16384),
+                outgoingResponsePayloadMaxSize: (int) ($this->nightwatchConfig['outgoing_response_payload_max_size'] ?? 16384),
                 redactPayloadFields: $this->nightwatchConfig['redact_payload_fields'] ?? ['_token', 'password', 'password_confirmation'],
                 redactHeaders: $this->nightwatchConfig['redact_headers'] ?? ['Authorization', 'Cookie', 'Proxy-Authorization', 'X-XSRF-TOKEN'],
                 config: $this->config,
@@ -291,6 +294,7 @@ final class NightwatchServiceProvider extends ServiceProvider
             uuid: $uuid,
             config: [
                 'enabled' => $this->nightwatchConfig['enabled'] ?? true,
+                'capture_outgoing_payload' => (bool) ($this->nightwatchConfig['capture_outgoing_payload'] ?? false),
                 'sampling' => [
                     'requests' => $this->nightwatchConfig['sampling']['requests'] ?? 1.0,
                     'commands' => $this->nightwatchConfig['sampling']['commands'] ?? 1.0,

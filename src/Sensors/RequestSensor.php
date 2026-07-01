@@ -4,9 +4,9 @@ namespace Laravel\Nightwatch\Sensors;
 
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
-use Illuminate\Support\Arr;
 use Laravel\Nightwatch\Concerns\RecordsContext;
 use Laravel\Nightwatch\Concerns\RedactsHeaders;
+use Laravel\Nightwatch\Concerns\SerializesPayload;
 use Laravel\Nightwatch\ExecutionStage;
 use Laravel\Nightwatch\Facades\Nightwatch;
 use Laravel\Nightwatch\Records\Request as RequestRecord;
@@ -18,12 +18,9 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
-use function array_is_list;
 use function array_map;
-use function array_slice;
 use function array_sum;
 use function assert;
-use function count;
 use function hash;
 use function implode;
 use function in_array;
@@ -31,7 +28,6 @@ use function is_array;
 use function is_int;
 use function is_numeric;
 use function is_string;
-use function json_decode;
 use function json_encode;
 use function rescue;
 use function sort;
@@ -46,6 +42,7 @@ final class RequestSensor
 {
     use RecordsContext;
     use RedactsHeaders;
+    use SerializesPayload;
 
     /**
      * @param  list<string>  $redactPayloadFields
@@ -222,7 +219,7 @@ final class RequestSensor
 
         return Str::text(rescue(
             fn () => json_encode([
-                ...$this->redactRecursively($record->payload->all()),
+                ...$this->redactRecursively($record->payload->all(), $this->redactPayloadFields),
                 '_nightwatch_files' => $this->mapUploadedFilesRecursively($record->files->all()),
             ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION),
             '{"_nightwatch_error":"SERIALIZATION_FAILED"}',
@@ -263,7 +260,7 @@ final class RequestSensor
         }
 
         return Str::mediumText(rescue(
-            fn () => $this->truncateAndEncodeResponse($content),
+            fn () => $this->serializeJsonPayload($content, $this->responsePayloadMaxSize, $this->responsePayloadMaxObjects, $this->redactPayloadFields),
             '{"_nightwatch_error":"SERIALIZATION_FAILED"}',
             static function ($e) {
                 Nightwatch::unrecoverableExceptionOccurred($e);
@@ -271,73 +268,6 @@ final class RequestSensor
                 return false;
             },
         ));
-    }
-
-    private function truncateAndEncodeResponse(string $content): string
-    {
-        $decoded = json_decode($content, true, flags: JSON_THROW_ON_ERROR);
-
-        if (is_array($decoded)) {
-            $decoded = $this->redactRecursively($decoded);
-
-            if (strlen($content) > $this->responsePayloadMaxSize) {
-                $decoded = $this->truncateResponseObjects($decoded);
-            }
-        }
-
-        return (string) json_encode($decoded, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION);
-    }
-
-    /**
-     * Lists are truncated to the first {@see $responsePayloadMaxObjects}
-     * objects. Resource collections (`{data: [...]}`) have the rule applied to
-     * `data`. Anything else is kept whole.
-     *
-     * @param  array<mixed>  $decoded
-     * @return array<mixed>
-     */
-    private function truncateResponseObjects(array $decoded): array
-    {
-        if (array_is_list($decoded)) {
-            return $this->truncateList($decoded);
-        }
-
-        if (isset($decoded['data']) && is_array($decoded['data']) && array_is_list($decoded['data'])) {
-            $decoded['data'] = $this->truncateList($decoded['data']);
-        }
-
-        return $decoded;
-    }
-
-    /**
-     * @param  list<mixed>  $list
-     * @return list<mixed>
-     */
-    private function truncateList(array $list): array
-    {
-        if (count($list) <= $this->responsePayloadMaxObjects) {
-            return $list;
-        }
-
-        return [
-            ...array_slice($list, 0, $this->responsePayloadMaxObjects),
-            ['more_truncated_objects' => count($list) - $this->responsePayloadMaxObjects],
-        ];
-    }
-
-    /**
-     * @param  array<mixed>  $array
-     * @return array<mixed>
-     */
-    private function redactRecursively(array $array): array
-    {
-        return Arr::map($array, function ($value, $key) {
-            if (is_array($value)) {
-                return $this->redactRecursively($value);
-            }
-
-            return ! in_array($key, $this->redactPayloadFields, true) || ! is_string($value) ? $value : '['.strlen($value).' bytes redacted]';
-        });
     }
 
     /**
