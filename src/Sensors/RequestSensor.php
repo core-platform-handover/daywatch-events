@@ -201,13 +201,13 @@ final class RequestSensor
 
     private function serializePayload(Request $request, Response $response, RequestRecord $record): string
     {
-        if ($response->getStatusCode() !== 500) {
-            return '';
-        }
+        // if ($response->getStatusCode() !== 500) {
+        //     return '';
+        // }
 
-        if (in_array($request->getMethod(), ['GET', 'HEAD', 'OPTIONS', 'TRACE'], true) && $record->payload->count() === 0 && $record->files->count() === 0) {
-            return '';
-        }
+        // if (in_array($request->getMethod(), ['GET', 'HEAD', 'OPTIONS', 'TRACE'], true) && $record->payload->count() === 0 && $record->files->count() === 0) {
+        //     return '';
+        // }
 
         if (! $this->capturePayload) {
             return '{"_nightwatch_error":"NOT_ENABLED"}';
